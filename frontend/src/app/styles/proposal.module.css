@@ -1,15 +1,4 @@
 /* styles/proposal.module.css */
-:root {
-  --primary-blue: #2563eb;
-  --primary-blue-light: #3b82f6;
-  --primary-blue-dark: #1d4ed8;
-  --background-blue: #f0f7ff;
-  --text-primary: #1e293b;
-  --text-secondary: #475569;
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-}
 
 .container {
   min-height: 100vh;

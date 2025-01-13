@@ -334,14 +334,12 @@ export default function ProposalEditorV2() {
     setSaving(true);
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(
-        `${BASE_URL}/api/proposal/${proposal.id}/sections`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+      const response = await fetch(`${BASE_URL}/api/proposal/${proposal.id}/sections`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
           body: JSON.stringify({
             sections: proposal.sections.map((section, index) => ({
               id: section.id || undefined, // Only include id if it exists
