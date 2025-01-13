@@ -22,6 +22,7 @@ export default function ProposalView() {
   const params = useParams();
   const [proposal, setProposal] = React.useState<Proposal | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
   React.useEffect(() => {
     const fetchProposal = async () => {
@@ -32,14 +33,11 @@ export default function ProposalView() {
           return;
         }
 
-        const response = await fetch(
-          `http://localhost:3000/api/proposal/${params.id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+        const response = await fetch(`${BASE_URL}/api/user/profile`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
         if (!response.ok) throw new Error("Failed to fetch proposal");
 

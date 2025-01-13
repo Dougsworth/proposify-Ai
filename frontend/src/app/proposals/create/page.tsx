@@ -161,8 +161,7 @@ const ProposalCreate = () => {
       }
 
       let payload;
-      let endpoint = "http://localhost:3000/api/proposal/";
-
+      let endpoint = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/proposal/`;
       switch (selectedMethod) {
         case "ai":
           if (

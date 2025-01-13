@@ -26,11 +26,14 @@ export default function DashboardPage() {
           return;
         }
 
-        const response = await fetch("http://localhost:3000/api/proposal", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/proposal`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
 
         if (!response.ok) {
           throw new Error("Failed to fetch proposals");

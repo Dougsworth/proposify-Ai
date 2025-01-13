@@ -159,6 +159,8 @@ export default function ProposalEditorV2() {
   const [showSectionTypes, setShowSectionTypes] = useState(false);
   const [aiAssistantOpen, setAIAssistantOpen] = useState(false);
   const [pdfExportModalOpen, setPdfExportModalOpen] = useState(false);
+  const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
   >(null);
@@ -174,16 +176,13 @@ export default function ProposalEditorV2() {
         }
 
         const proposalId = params.id as string;
-        const response = await fetch(
-          `http://localhost:3000/api/proposal/${proposalId}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        const response = await fetch(`${BASE_URL}/api/proposal/${proposalId}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
 
         if (!response.ok) {
           throw new Error("Failed to fetch proposal");
@@ -252,7 +251,7 @@ export default function ProposalEditorV2() {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
-        `http://localhost:3000/api/proposal/${proposal.id}/sections/${section.id}/regenerate`,
+        `${BASE_URL}/api/proposal/${proposal.id}/sections/${section.id}/regenerate`,
         {
           method: "POST",
           headers: {
@@ -336,7 +335,7 @@ export default function ProposalEditorV2() {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
-        `http://localhost:3000/api/proposal/${proposal.id}/sections`,
+        `${BASE_URL}/api/proposal/${proposal.id}/sections`,
         {
           method: "PATCH",
           headers: {

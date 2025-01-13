@@ -35,7 +35,7 @@ export default function ProposalEditPage() {
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [isAddingSection, setIsAddingSection] = useState(false);
   const [proposalTitle, setProposalTitle] = useState("Untitled Proposal");
-
+  const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
   // Fetch proposal data
   useEffect(() => {
     const fetchProposal = async () => {
@@ -47,16 +47,13 @@ export default function ProposalEditPage() {
         }
 
         const proposalId = params.id as string;
-        const response = await fetch(
-          `http://localhost:3000/api/proposal/${proposalId}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        const response = await fetch(`${BASE_URL}/api/proposal/${proposalId}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
 
         if (!response.ok) {
           throw new Error("Failed to fetch proposal");
@@ -127,7 +124,7 @@ export default function ProposalEditPage() {
       const proposalId = params.id as string;
 
       const response = await fetch(
-        `http://localhost:3000/api/proposal/${proposalId}/sections`,
+        `${BASE_URL}/api/proposal/${proposalId}/sections`,
         {
           method: "PATCH",
           headers: {
@@ -154,7 +151,7 @@ export default function ProposalEditPage() {
       console.error("Error saving proposal:", error);
     }
   };
- 
+
   const AIAssistant = () => (
     <motion.div
       initial={{ opacity: 0, x: 300 }}

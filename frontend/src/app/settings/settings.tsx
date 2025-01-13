@@ -22,6 +22,8 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("profile");
   const [loading, setLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+
   const [profileData, setProfileData] = useState<UserProfile>({
     fullName: "",
     email: "",
@@ -53,7 +55,7 @@ export default function SettingsPage() {
         return;
       }
 
-      const response = await fetch("http://localhost:3000/api/user/profile", {
+      const response = await fetch(`${BASE_URL}/api/user/profile`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -110,16 +112,13 @@ export default function SettingsPage() {
 
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch(
-          "http://localhost:3000/api/user/profile-picture",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            body: formData,
-          }
-        );
+        const response = await fetch(`${BASE_URL}/api/user/profile-picture`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        });
 
         if (!response.ok) throw new Error("Failed to upload profile picture");
 
@@ -152,7 +151,7 @@ export default function SettingsPage() {
           throw new Error("Passwords do not match");
         }
 
-        await fetch("http://localhost:3000/api/user/password", {
+        await fetch(`${BASE_URL}/api/user/password`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -173,9 +172,8 @@ export default function SettingsPage() {
       } else {
         const endpoint =
           activeTab === "profile"
-            ? "http://localhost:3000/api/user/profile"
-            : "http://localhost:3000/api/user/notifications";
-
+            ? `${BASE_URL}/api/user/profile`
+            : `${BASE_URL}/api/user/notifications`;
         const data =
           activeTab === "profile"
             ? { fullName: profileData.fullName, email: profileData.email }
