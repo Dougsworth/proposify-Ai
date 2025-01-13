@@ -76,7 +76,7 @@ export default function ProposalEditPage() {
         setSections(editorSections);
       } catch (error) {
         console.error("Error fetching proposal:", error);
-        router.push("/proposals");
+        router.push("/dashboard");
       }
     };
 
@@ -149,12 +149,12 @@ export default function ProposalEditPage() {
         throw new Error("Failed to save proposal");
       }
 
-      router.push("/proposals");
+      router.push("/dashboard");
     } catch (error) {
       console.error("Error saving proposal:", error);
     }
   };
-
+ 
   const AIAssistant = () => (
     <motion.div
       initial={{ opacity: 0, x: 300 }}

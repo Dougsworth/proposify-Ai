@@ -15,7 +15,9 @@ import {
   ChevronLeft,
   FileText,
   Settings,
+  RefreshCw,
 } from "lucide-react";
+import PDFExportModal from "../../../components/PDFExportModal";
 import {
   DragDropContext,
   Droppable,
@@ -33,11 +35,76 @@ interface Section {
   type: "text" | "list" | "image";
 }
 
+interface PDFConfig {
+  maxWidth: number;
+  pageHeight: number;
+  margins: {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+  };
+  spacing: {
+    afterTitle: number;
+    afterSection: number;
+    lineHeight: number;
+  };
+}
+
 interface Proposal {
   id: number;
   title: string;
   sections: Section[];
 }
+// Theme types and configurations
+interface Theme {
+  background: string;
+  headerBg: string;
+  cardBg: string;
+  textPrimary: string;
+  textSecondary: string;
+  accent: string;
+  border: string;
+}
+
+const themes: Record<string, Theme> = {
+  light: {
+    background: "bg-gray-50",
+    headerBg: "bg-white",
+    cardBg: "bg-white",
+    textPrimary: "text-gray-900",
+    textSecondary: "text-gray-600",
+    accent: "text-blue-600 hover:text-blue-800",
+    border: "border-gray-200",
+  },
+  dark: {
+    background: "bg-gray-900",
+    headerBg: "bg-gray-800",
+    cardBg: "bg-gray-800",
+    textPrimary: "text-white",
+    textSecondary: "text-gray-300",
+    accent: "text-blue-400 hover:text-blue-300",
+    border: "border-gray-700",
+  },
+  sepia: {
+    background: "bg-amber-50",
+    headerBg: "bg-amber-100",
+    cardBg: "bg-white",
+    textPrimary: "text-amber-900",
+    textSecondary: "text-amber-700",
+    accent: "text-amber-800 hover:text-amber-900",
+    border: "border-amber-200",
+  },
+  modern: {
+    background: "bg-gradient-to-br from-blue-50 to-indigo-100",
+    headerBg: "bg-white bg-opacity-90 backdrop-blur-sm",
+    cardBg: "bg-white bg-opacity-90 backdrop-blur-sm",
+    textPrimary: "text-gray-900",
+    textSecondary: "text-gray-600",
+    accent: "text-indigo-600 hover:text-indigo-800",
+    border: "border-blue-100",
+  },
+};
 
 // Section Type Icons
 const SectionTypeIcons = {
@@ -77,9 +144,13 @@ const SectionTypeIcons = {
 };
 
 export default function ProposalEditorV2() {
+  const [regeneratingSections, setRegeneratingSections] = useState<Set<number>>(
+    new Set()
+  );
   const router = useRouter();
   const params = useParams();
-
+  const [currentTheme, setCurrentTheme] = useState<string>("light");
+  const theme = themes[currentTheme];
   // State Management
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,6 +158,7 @@ export default function ProposalEditorV2() {
   const [error, setError] = useState<string | null>(null);
   const [showSectionTypes, setShowSectionTypes] = useState(false);
   const [aiAssistantOpen, setAIAssistantOpen] = useState(false);
+  const [pdfExportModalOpen, setPdfExportModalOpen] = useState(false);
   const [selectedSectionIndex, setSelectedSectionIndex] = useState<
     number | null
   >(null);
@@ -135,7 +207,128 @@ export default function ProposalEditorV2() {
     }
   }, [params.id, router]);
 
+  const calculatePages = () => {
+    if (!proposal) return [];
+
+    const pages: Array<{
+      content: Array<{ title: string; content: string }>;
+      pageNumber: number;
+    }> = [{ content: [], pageNumber: 1 }];
+
+    let currentPage = 0;
+    let contentHeight = 0;
+    const PAGE_HEIGHT = 800; // Approximate height in pixels for preview
+
+    // Add title to first page
+    pages[0].content.push({ title: proposal.title, content: "" });
+    contentHeight += 60; // Approximate height for title
+
+    proposal.sections.forEach((section) => {
+      // Approximate height calculation
+      const sectionHeight = 40 + Math.ceil(section.content.length / 4); // Rough estimate
+
+      if (contentHeight + sectionHeight > PAGE_HEIGHT) {
+        // Create new page
+        currentPage++;
+        pages.push({ content: [], pageNumber: currentPage + 1 });
+        contentHeight = 0;
+      }
+
+      pages[currentPage].content.push({
+        title: section.title,
+        content: section.content,
+      });
+      contentHeight += sectionHeight;
+    });
+
+    return pages;
+  };
+  const regenerateSection = async (index: number) => {
+    if (!proposal) return;
+
+    const section = proposal.sections[index];
+    setRegeneratingSections((prev) => new Set(prev).add(index));
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(
+        `http://localhost:3000/api/proposal/${proposal.id}/sections/${section.id}/regenerate`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sectionTitle: section.title || "",
+            currentContent: section.content || "",
+            proposalTitle: proposal.title || "",
+            sectionType: "text", // Explicitly set default type
+            context: proposal.sections
+              .filter((s, i) => i !== index)
+              .map((s) => ({
+                title: s.title || "",
+                content: s.content || "",
+              })),
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to regenerate section");
+      }
+
+      const { content } = await response.json();
+
+      // Update the section in the proposal
+      const updatedSections = [...proposal.sections];
+      updatedSections[index] = {
+        ...updatedSections[index],
+        content: content,
+      };
+
+      setProposal({
+        ...proposal,
+        sections: updatedSections,
+      });
+
+      showNotification("Section regenerated successfully!", "success");
+    } catch (error) {
+      console.error("Error regenerating section:", error);
+      showNotification(
+        error instanceof Error ? error.message : "Failed to regenerate section",
+        "error"
+      );
+    } finally {
+      setRegeneratingSections((prev) => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
+    }
+  };
+
+  const ThemeSelector = () => (
+    <div className="fixed bottom-4 left-4 bg-white rounded-lg shadow-lg p-2 flex gap-2">
+      {Object.keys(themes).map((themeName) => (
+        <button
+          key={themeName}
+          onClick={() => setCurrentTheme(themeName)}
+          className={`w-6 h-6 rounded-full ${
+            themes[themeName].background
+          } border-2 ${
+            currentTheme === themeName ? "border-blue-500" : "border-gray-200"
+          }`}
+          title={`${themeName.charAt(0).toUpperCase()}${themeName.slice(
+            1
+          )} theme`}
+        />
+      ))}
+    </div>
+  );
   // Save Proposal
+  // Updated handleSaveProposal function
   const handleSaveProposal = useCallback(async () => {
     if (!proposal) return;
 
@@ -151,11 +344,11 @@ export default function ProposalEditorV2() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            sections: proposal.sections.map((section) => ({
-              id: section.id,
+            sections: proposal.sections.map((section, index) => ({
+              id: section.id || undefined, // Only include id if it exists
               title: section.title,
               content: section.content,
-              order: section.order,
+              order: index, // Use index as order to maintain sequence
               type: section.type,
             })),
           }),
@@ -163,86 +356,190 @@ export default function ProposalEditorV2() {
       );
 
       if (!response.ok) {
-        throw new Error(`Failed to save proposal: ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to save proposal");
       }
 
       // Show success message
       const successMessage = document.createElement("div");
       successMessage.className =
-        "fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg";
+        "fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50";
       successMessage.textContent = "Proposal saved successfully!";
       document.body.appendChild(successMessage);
       setTimeout(() => successMessage.remove(), 3000);
     } catch (error) {
       console.error("Error saving proposal:", error);
-      setError("Failed to save proposal");
 
       // Show error message
       const errorMessage = document.createElement("div");
       errorMessage.className =
-        "fixed bottom-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg";
-      errorMessage.textContent = "Failed to save proposal. Please try again.";
+        "fixed bottom-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50";
+      errorMessage.textContent =
+        error instanceof Error
+          ? error.message
+          : "Failed to save proposal. Please try again.";
       document.body.appendChild(errorMessage);
       setTimeout(() => errorMessage.remove(), 3000);
     } finally {
       setSaving(false);
     }
   }, [proposal]);
+  // Export Proposal as PDF
+  interface PageConfig {
+    margins: {
+      left: number;
+      right: number;
+      top: number;
+      bottom: number;
+    };
+    lineHeight: number;
+    titleSpacing: number;
+    sectionSpacing: number;
+    maxWidth: number;
+  }
 
-  // Export to PDF
-  const handleExportPDF = async () => {
+  const handleExportPDF = async (): Promise<void> => {
     if (!proposal) return;
 
     try {
-      // Create new PDF document
-      const doc = new jsPDF();
-
-      // Add title
-      doc.setFontSize(24);
-      doc.text(proposal.title, 20, 20);
-
-      // Add sections
-      let yPosition = 40;
-      proposal.sections.forEach((section) => {
-        // Add section title
-        doc.setFontSize(16);
-        doc.text(section.title, 20, yPosition);
-        yPosition += 10;
-
-        // Add section content
-        doc.setFontSize(12);
-        const contentLines = doc.splitTextToSize(section.content, 170); // Split text to fit page width
-        doc.text(contentLines, 20, yPosition);
-        yPosition += 10 * contentLines.length + 20;
-
-        // Add new page if needed
-        if (yPosition > 280) {
-          doc.addPage();
-          yPosition = 20;
-        }
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+        putOnlyUsedFonts: true,
+        compress: true,
       });
 
-      // Save the PDF
-      doc.save(`${proposal.title.replace(/\s+/g, "_")}.pdf`);
+      const pageConfig: PageConfig = {
+        margins: {
+          left: 20,
+          right: 20,
+          top: 30,
+          bottom: 30,
+        },
+        lineHeight: 7,
+        titleSpacing: 10,
+        sectionSpacing: 15,
+        maxWidth: 170,
+      };
+
+      let yPosition: number = pageConfig.margins.top;
+      let pageNum: number = 1;
+
+      const addHeader = (currentPage: number): void => {
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(100);
+        doc.text(new Date().toLocaleDateString(), pageConfig.margins.left, 15);
+        doc.text(`Page ${currentPage}`, 210 - pageConfig.margins.right, 15, {
+          align: "right",
+        });
+        doc.line(
+          pageConfig.margins.left,
+          20,
+          210 - pageConfig.margins.right,
+          20
+        );
+      };
+
+      const addFooter = (): void => {
+        const footerY = 297 - pageConfig.margins.bottom;
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(150);
+        doc.text("© YourCompanyName", pageConfig.margins.left, footerY);
+        doc.text("Confidential", 210 - pageConfig.margins.right, footerY, {
+          align: "right",
+        });
+      };
+
+      const checkAndAddNewPage = (): boolean => {
+        if (
+          yPosition >
+          297 - pageConfig.margins.bottom - pageConfig.lineHeight
+        ) {
+          addFooter();
+          doc.addPage();
+          pageNum++;
+          addHeader(pageNum);
+          yPosition = pageConfig.margins.top;
+          return true;
+        }
+        return false;
+      };
+
+      // Add initial header
+      addHeader(pageNum);
+
+      // Document Title
+      doc.setFontSize(20);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(40);
+      doc.text(proposal.title, pageConfig.margins.left, yPosition);
+      yPosition += pageConfig.titleSpacing + pageConfig.lineHeight;
+
+      // Process each section
+      proposal.sections.forEach((section: Section) => {
+        checkAndAddNewPage();
+
+        // Section Title
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(60);
+        doc.text(section.title, pageConfig.margins.left, yPosition);
+        yPosition += pageConfig.lineHeight;
+
+        // Section Content
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(80);
+
+        // Split content into lines that fit within margins
+        const splitText: string[] = doc.splitTextToSize(
+          section.content,
+          pageConfig.maxWidth
+        );
+
+        // Process each line of text
+        splitText.forEach((line: string) => {
+          checkAndAddNewPage();
+          doc.text(line, pageConfig.margins.left, yPosition);
+          yPosition += pageConfig.lineHeight;
+        });
+
+        // Add spacing between sections
+        yPosition += pageConfig.sectionSpacing;
+      });
+
+      // Add final footer
+      addFooter();
+
+      // Save the document
+      const filename = `${proposal.title
+        .replace(/[^a-zA-Z0-9]/g, "_")
+        .trim()}_${new Date().toISOString().split("T")[0]}`;
+      doc.save(`${filename}.pdf`);
 
       // Show success message
-      const successMessage = document.createElement("div");
-      successMessage.className =
-        "fixed bottom-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg";
-      successMessage.textContent = "PDF exported successfully!";
-      document.body.appendChild(successMessage);
-      setTimeout(() => successMessage.remove(), 3000);
+      showNotification("PDF exported successfully!", "success");
     } catch (error) {
       console.error("Error exporting PDF:", error);
-
-      // Show error message
-      const errorMessage = document.createElement("div");
-      errorMessage.className =
-        "fixed bottom-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg";
-      errorMessage.textContent = "Failed to export PDF. Please try again.";
-      document.body.appendChild(errorMessage);
-      setTimeout(() => errorMessage.remove(), 3000);
+      showNotification("Failed to export PDF. Please try again.", "error");
     }
+  };
+
+  // Helper function for notifications
+  const showNotification = (
+    message: string,
+    type: "success" | "error"
+  ): void => {
+    const notification = document.createElement("div");
+    notification.className = `fixed bottom-4 right-4 px-4 py-2 rounded shadow-lg ${
+      type === "success" ? "bg-green-500" : "bg-red-500"
+    } text-white`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    setTimeout(() => notification.remove(), 3000);
   };
   // Update Section
   const updateSection = (index: number, updates: Partial<Section>) => {
@@ -304,7 +601,9 @@ export default function ProposalEditorV2() {
   // Loading and Error States
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div
+        className={`flex justify-center items-center min-h-screen ${theme.background}`}
+      >
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-blue-500"></div>
       </div>
     );
@@ -312,14 +611,16 @@ export default function ProposalEditorV2() {
 
   if (error || !proposal) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="text-center">
+      <div
+        className={`min-h-screen flex items-center justify-center ${theme.background}`}
+      >
+        <div className={`text-center ${theme.cardBg} p-8 rounded-lg shadow-lg`}>
           <FileText className="mx-auto h-16 w-16 text-gray-400 mb-4" />
           <h2 className="text-2xl font-bold text-red-600 mb-4">
             {error || "Proposal not found"}
           </h2>
           <button
-            onClick={() => router.push("/proposals")}
+            onClick={() => router.push("/dashboard")}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
             Back to Proposals
@@ -330,7 +631,7 @@ export default function ProposalEditorV2() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+    <div className={`min-h-screen ${theme.background} p-8`}>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -340,7 +641,7 @@ export default function ProposalEditorV2() {
         <div className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 flex justify-between items-center">
           <div className="flex items-center space-x-4">
             <button
-              onClick={() => router.push("/proposals")}
+              onClick={() => router.push("/dashboard")}
               className="hover:bg-white/20 p-2 rounded-full transition"
             >
               <ChevronLeft className="w-6 h-6" />
@@ -378,7 +679,6 @@ export default function ProposalEditorV2() {
               )}
             </div>
             {/* Save Button */}
-
             <button
               onClick={handleSaveProposal}
               disabled={saving}
@@ -389,7 +689,7 @@ export default function ProposalEditorV2() {
             </button>
             {/* Export to PDF Button */}
             <button
-              onClick={handleExportPDF}
+              onClick={() => setPdfExportModalOpen(true)}
               className="flex items-center space-x-2 bg-white text-blue-600 px-6 py-2 rounded-lg hover:bg-gray-100 transition"
             >
               <FileText className="w-5 h-5" />
@@ -418,7 +718,7 @@ export default function ProposalEditorV2() {
                 <div
                   {...provided.droppableProps}
                   ref={provided.innerRef}
-                  className="space-y-6"
+                  className="space-y-4"
                 >
                   {proposal.sections.map((section: Section, index: number) => (
                     <Draggable
@@ -426,52 +726,50 @@ export default function ProposalEditorV2() {
                       draggableId={`section-${section.id || index}`}
                       index={index}
                     >
-                      {(provided: DraggableProvided) => (
+                      {(provided: DraggableProvided, snapshot) => (
                         <motion.div
                           ref={provided.innerRef}
                           {...provided.draggableProps}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="bg-white shadow-md rounded-xl p-6 relative group"
+                          initial={false}
+                          animate={{
+                            scale: snapshot.isDragging ? 1.02 : 1,
+                            boxShadow: snapshot.isDragging
+                              ? "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                              : "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)",
+                            borderColor: snapshot.isDragging
+                              ? "rgba(59, 130, 246, 0.5)"
+                              : "transparent",
+                          }}
+                          className={`${theme.cardBg} rounded-xl p-6 relative group border-2 transition-colors`}
                         >
                           {/* Drag Handle */}
                           <div
                             {...provided.dragHandleProps}
-                            className="absolute top-4 left-4 cursor-move text-gray-400 hover:text-gray-600"
+                            className="absolute top-0 left-0 w-8 bottom-0 flex items-center justify-center cursor-move 
+                             hover:bg-gray-100 transition-colors rounded-l-xl group"
                           >
-                            <GripVertical className="w-5 h-5" />
-                          </div>
-
-                          {/* Section Header */}
-                          <div className="pl-8 mb-4 flex justify-between items-center">
-                            <input
-                              type="text"
-                              value={section.title}
-                              onChange={(e) =>
-                                updateSection(index, { title: e.target.value })
-                              }
-                              className="text-xl font-semibold text-gray-800 w-full bg-transparent border-b border-transparent focus:border-blue-500 focus:outline-none"
-                              placeholder="Section Title"
-                            />
-
-                            {/* Section Type and Remove Button */}
-                            <div className="flex items-center space-x-2">
-                              <div className="text-gray-500">
-                                {SectionTypeIcons[section.type]}
-                              </div>
-                              {proposal.sections.length > 1 && (
-                                <button
-                                  onClick={() => removeSection(index)}
-                                  className="text-red-500 hover:text-red-700"
-                                >
-                                  <Trash2 className="w-5 h-5" />
-                                </button>
-                              )}
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                              <GripVertical className="w-5 h-5 text-gray-400" />
                             </div>
                           </div>
 
                           {/* Section Content */}
                           <div className="pl-8">
+                            <div className="flex items-center justify-between mb-2">
+                              <input
+                                type="text"
+                                value={section.title}
+                                onChange={(e) =>
+                                  updateSection(index, {
+                                    title: e.target.value,
+                                  })
+                                }
+                                className={`text-xl font-semibold w-full bg-transparent border-b border-transparent 
+                                focus:border-blue-500 focus:outline-none ${theme.textPrimary}`}
+                                placeholder="Section Title"
+                              />
+                            </div>
+
                             <textarea
                               value={section.content}
                               onChange={(e) =>
@@ -479,22 +777,56 @@ export default function ProposalEditorV2() {
                                   content: e.target.value,
                                 })
                               }
-                              className="w-full min-h-[200px] bg-gray-50 p-4 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className={`w-full min-h-[200px] mt-4 p-4 rounded-lg border ${theme.border} 
+                              focus:outline-none focus:ring-2 focus:ring-blue-500 
+                              ${theme.cardBg} ${theme.textSecondary}`}
                               placeholder="Start typing your section content..."
                             />
 
-                            {/* AI Assistant Button */}
-                            <div className="mt-4 flex justify-end">
+                            {/* Section Actions */}
+                            <div className="mt-4 flex justify-between items-center">
                               <button
-                                onClick={() => {
-                                  setSelectedSectionIndex(index);
-                                  setAIAssistantOpen(true);
-                                }}
-                                className="flex items-center space-x-2 text-blue-600 hover:text-blue-800 transition"
+                                onClick={() => regenerateSection(index)}
+                                disabled={regeneratingSections.has(index)}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all
+                                  ${
+                                    regeneratingSections.has(index)
+                                      ? "bg-blue-50 text-blue-400 cursor-not-allowed"
+                                      : "text-blue-600 hover:bg-blue-50"
+                                  }`}
                               >
-                                <Wand2 className="w-5 h-5" />
-                                <span>AI Assistant</span>
+                                <RefreshCw
+                                  className={`w-4 h-4 ${
+                                    regeneratingSections.has(index)
+                                      ? "animate-spin"
+                                      : ""
+                                  }`}
+                                />
+                                {regeneratingSections.has(index)
+                                  ? "Regenerating..."
+                                  : "Regenerate"}
                               </button>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => {
+                                    setSelectedSectionIndex(index);
+                                    setAIAssistantOpen(true);
+                                  }}
+                                  className="text-blue-600 hover:text-blue-700 p-2 rounded-lg 
+                                   hover:bg-blue-50 transition-colors"
+                                >
+                                  <Wand2 className="w-5 h-5" />
+                                </button>
+                                {proposal.sections.length > 1 && (
+                                  <button
+                                    onClick={() => removeSection(index)}
+                                    className="text-red-500 hover:text-red-700 p-2 rounded-lg 
+                                     hover:bg-red-50 transition-colors"
+                                  >
+                                    <Trash2 className="w-5 h-5" />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </motion.div>
@@ -550,6 +882,14 @@ export default function ProposalEditorV2() {
           </motion.div>
         )}
       </AnimatePresence>
+      <PDFExportModal
+        isOpen={pdfExportModalOpen}
+        onClose={() => setPdfExportModalOpen(false)}
+        proposal={proposal}
+        onExport={handleExportPDF}
+        calculatePages={calculatePages}
+      />
+      <ThemeSelector />
     </div>
   );
 }
