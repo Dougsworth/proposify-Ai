@@ -1,4 +1,3 @@
-Here’s a clean and nicely formatted write-up for your frontend markdown:
 
 # Proposify-AI
 
